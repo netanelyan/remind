@@ -1,0 +1,36 @@
+# XcodeGen spec for a throwaway app that wraps the real widget sources. It exists only so
+# Xcode's build runs its App Intents metadata step for the HelloWidget module; see
+# .github/workflows/appintents-metadata.yml. Nothing from this project ships except that metadata.
+name: MetadataProbe
+options:
+  deploymentTarget:
+    iOS: "26.0"
+packages:
+  Remind:
+    path: ..
+targets:
+  ProbeApp:
+    type: application
+    platform: iOS
+    sources: [ProbeApp]
+    dependencies:
+      - target: HelloWidget
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: com.example.HelloApp
+      GENERATE_INFOPLIST_FILE: YES
+      SWIFT_VERSION: "6.0"
+  HelloWidget:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: ../Sources/HelloWidget
+    dependencies:
+      - package: Remind
+        product: ReminderKit
+    settings:
+      # Must match the module name xtool builds, since the metadata refers to types by module.
+      PRODUCT_MODULE_NAME: HelloWidget
+      PRODUCT_BUNDLE_IDENTIFIER: com.example.HelloApp.HelloWidget
+      INFOPLIST_FILE: ../HelloWidget-Info.plist
+      GENERATE_INFOPLIST_FILE: YES
+      SWIFT_VERSION: "6.0"

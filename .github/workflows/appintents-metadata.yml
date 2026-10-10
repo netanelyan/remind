@@ -1,0 +1,69 @@
+# Generates App Intents metadata for the widget on a macOS runner.
+#
+# The app is built on Linux with xtool, which can't run Xcode's App Intents metadata step, and
+# without that metadata iOS ignores the widget's in-place buttons. This builds the widget sources
+# with Xcode, then commits the resulting Metadata.appintents to Metadata/HelloWidget/, where
+# xtool.yml copies it into the widget bundle. Re-run it whenever WidgetIntents.swift changes.
+name: App Intents metadata
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - Sources/HelloWidget/WidgetIntents.swift
+      - ci/**
+      - .github/workflows/appintents-metadata.yml
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select newest Xcode
+        run: |
+          XCODE=$(ls -d /Applications/Xcode*.app | sort -V | tail -1)
+          sudo xcode-select -s "$XCODE"
+          xcodebuild -version | tee report.txt
+
+      - name: Generate probe project
+        run: |
+          brew install xcodegen
+          cd ci && xcodegen generate
+
+      - name: Build with Xcode
+        run: |
+          set -o pipefail
+          xcodebuild -project ci/MetadataProbe.xcodeproj -scheme ProbeApp \
+            -destination 'generic/platform=iOS' -derivedDataPath dd \
+            CODE_SIGNING_ALLOWED=NO build 2>&1 | tee build.log | tail -5
+
+      - name: Collect metadata
+        if: always()
+        run: |
+          {
+            echo; echo "== appintents outputs"; find dd -name '*.appintents' -print 2>/dev/null
+            echo; echo "== metadata processor lines"; grep -i 'appintentsmetadataprocessor\|ExtractAppIntentsMetadata' build.log | cut -c1-400 | head -20
+            echo; echo "== errors"; grep -E 'error:|BUILD (SUCCEEDED|FAILED)' build.log | head -40
+          } >> report.txt 2>&1
+          SRC=$(find dd -path '*HelloWidget.appex/Metadata.appintents' -type d | head -1)
+          rm -rf Metadata/HelloWidget && mkdir -p Metadata/HelloWidget
+          if [ -n "$SRC" ]; then
+            cp -R "$SRC" Metadata/HelloWidget/
+            echo; echo "== copied $SRC" >> report.txt
+            ls -la Metadata/HelloWidget/Metadata.appintents >> report.txt
+          fi
+          cp report.txt Metadata/ci-report.txt
+
+      - name: Commit metadata
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Metadata
+          git diff --cached --quiet || git commit -m "Update App Intents metadata from Xcode build"
+          git push

@@ -1,0 +1,15 @@
+version: 1
+# Keep this bundle ID: it is already registered with Apple, and a new one
+# would use up another of the free account's 3 App IDs per 7 days.
+bundleID: com.example.HelloApp
+product: HelloApp
+infoPath: HelloApp-Info.plist
+iconPath: icon.png
+# xtool currently signs every bundle with the *app's* entitlements, so this
+# file also covers the widget. HelloWidget.entitlements is kept identical for
+# when xtool starts signing extensions separately.
+entitlementsPath: HelloApp.entitlements
+extensions:
+  - product: HelloWidget
+    infoPath: HelloWidget-Info.plist
+    entitlementsPath: HelloWidget.entitlements
