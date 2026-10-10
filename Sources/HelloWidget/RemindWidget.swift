@@ -87,15 +87,15 @@ struct RemindWidgetView: View {
     var entry: RemindEntry
     @Environment(\.widgetFamily) private var family
 
-    /// Rows that fit below the header, counting section titles as rows.
+    /// Rows that fit in the left column, counting section titles as rows.
     private var lineBudget: Int {
-        family == .systemLarge ? 11 : 4
+        family == .systemLarge ? 12 : 5
     }
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
+            // Left side: reminders only.
             VStack(alignment: .leading, spacing: family == .systemLarge ? 6 : 4) {
-                header
                 let (lines, hidden) = layout()
                 if lines.isEmpty {
                     Spacer()
@@ -132,13 +132,6 @@ struct RemindWidgetView: View {
         }
     }
 
-    private var header: some View {
-        Text(entry.leftToday == 0 ? "Nothing left today" : family == .systemSmall ? "\(entry.leftToday) left" : "\(entry.leftToday) left today")
-            .font(.subheadline.weight(.bold))
-            .lineLimit(1)
-            .padding(.bottom, 2)
-    }
-
     private func sectionTitle(_ section: ReminderSection) -> some View {
         Label(section.title.uppercased(), systemImage: section.symbol)
             .font(.system(size: 10, weight: .bold))
@@ -164,13 +157,8 @@ struct RemindWidgetView: View {
             Text(reminder.priority == .none ? reminder.title : "\(reminder.priority.marks) \(reminder.title)")
                 .font(.caption)
                 .lineLimit(1)
+            // No dates in the widget; they only show in the app.
             Spacer(minLength: 2)
-            if family != .systemSmall, let due = reminder.dueText(now: entry.date) {
-                Text(due)
-                    .font(.caption2)
-                    .foregroundStyle(reminder.isOverdue(now: entry.date) ? .red : .secondary)
-                    .lineLimit(1)
-            }
         }
     }
 
@@ -212,14 +200,14 @@ struct AddButton: View {
         }
     }
 
-    /// Black circle, white plus. An image (not a filled shape) so it can keep its real colors in
+    /// White circle, black plus. An image (not a filled shape) so it can keep its real colors in
     /// the clear and tinted Home Screen styles, which would otherwise wash it into the background.
     private var plus: some View {
         Image(systemName: "plus.circle.fill")
             .resizable()
             .widgetAccentedRenderingMode(.fullColor)
             .symbolRenderingMode(.palette)
-            .foregroundStyle(.white, .black)
+            .foregroundStyle(.black, .white)
             .frame(width: 26, height: 26)
             .accessibilityLabel("Add reminder")
     }
