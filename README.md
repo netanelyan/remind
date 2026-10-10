@@ -28,7 +28,7 @@ The whole app is a Swift package, built and installed from Fedora on WSL with
 
 - **Sharing data with the widget.** The app and widget share one JSON database through an App Group. Free accounts can't normally get App Groups under xtool, so this uses a build of xtool with [PR #284](https://github.com/xtool-org/xtool/pull/284) applied. Reads and writes go through `NSFileCoordinator`, because the app and the widget can both write.
 - **An empty widget binary.** With Swift 6.4, xtool's extension setup links the widget with `-e _NSExtensionMain`, and dead stripping then removes all widget code. One linker flag in `Package.swift` keeps `_main` alive.
-- **Widget buttons.** Buttons that run in place need App Intents metadata, which only Xcode generates. On Linux the widget falls back to `remind://` links that the app handles and then returns to the Home Screen. A [GitHub workflow](.github/workflows/appintents-metadata.yml) builds the widget with Xcode on a macOS runner to generate that metadata, so the Linux build can ship it.
+- **Widget buttons.** Interactive widget buttons need App Intents metadata (`Metadata.appintents`), which only Xcode generates, and iOS silently ignores them without it. A [GitHub workflow](.github/workflows/appintents-metadata.yml) builds the widget sources with Xcode on a macOS runner and commits the metadata to [`Metadata/`](Metadata). `xtool.yml` copies it into the widget bundle, so the Linux build gets real in-place buttons. The metadata refers to types by module and name, so it only needs regenerating when the intents change.
 
 ## Project layout
 

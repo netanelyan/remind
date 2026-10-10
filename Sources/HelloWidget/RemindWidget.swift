@@ -77,7 +77,7 @@ struct RemindWidget: Widget {
                 .widgetURL(WidgetLink.open.url)
         }
         .configurationDisplayName("Remind")
-        .description("Tap a reminder to finish it. Medium and large sizes have a switch to show reminders by group or by urgency.")
+        .description("Tap a circle to finish a reminder. The switch at the top shows reminders by group or by urgency.")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
     }
 }
@@ -154,9 +154,9 @@ struct RemindWidgetView: View {
     private func row(_ reminder: Reminder) -> some View {
         let color = entry.groups[reminder.groupID]?.color.color ?? .blue
         return HStack(spacing: 2) {
-            // Only the circle finishes the reminder. The rest of the row falls through to the
-            // widget's URL, which just opens the app.
-            Link(destination: WidgetLink.complete(reminder.id).url) {
+            // Only the circle finishes the reminder, in place (see WidgetIntents.swift). The rest
+            // of the row falls through to the widget's URL, which just opens the app.
+            Button(intent: CompleteReminderIntent(reminderID: reminder.id)) {
                 Circle()
                     .strokeBorder(color, lineWidth: 1.6)
                     .frame(width: 14, height: 14)
@@ -164,6 +164,7 @@ struct RemindWidgetView: View {
                     .frame(width: 22, height: 20, alignment: .leading)
                     .contentShape(.rect)
             }
+            .buttonStyle(.plain)
             Text(reminder.priority == .none ? reminder.title : "\(reminder.priority.marks) \(reminder.title)")
                 .font(.caption)
                 .lineLimit(1)
@@ -201,29 +202,23 @@ struct RemindWidgetView: View {
     }
 }
 
-/// The in-widget switch between grouping by group and by urgency.
-/// The small size ignores links (any tap opens the app), so there it is only an indicator.
+/// The in-widget switch between grouping by group and by urgency. Runs in place.
 struct GroupingSwitch: View {
     var current: Grouping
     var compact: Bool
 
     var body: some View {
-        if compact {
-            capsule(showsSwitch: false)
-        } else {
-            Link(destination: WidgetLink.toggleGrouping.url) { capsule(showsSwitch: true) }
-        }
+        Button(intent: SwitchWidgetGroupingIntent()) { capsule }
+            .buttonStyle(.plain)
     }
 
-    private func capsule(showsSwitch: Bool) -> some View {
+    private var capsule: some View {
         HStack(spacing: 3) {
             Image(systemName: current.symbol)
-            if showsSwitch {
-                Text(current.label)
-                Image(systemName: "arrow.left.arrow.right")
-                    .font(.system(size: 8, weight: .bold))
-                    .foregroundStyle(.secondary)
-            }
+            if !compact { Text(current.label) }
+            Image(systemName: "arrow.left.arrow.right")
+                .font(.system(size: 8, weight: .bold))
+                .foregroundStyle(.secondary)
         }
         .font(.system(size: 11, weight: .semibold))
         .padding(.horizontal, 8)
