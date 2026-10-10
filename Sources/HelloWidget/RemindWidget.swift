@@ -1,3 +1,4 @@
+import AppIntents
 import ReminderKit
 import SwiftUI
 import WidgetKit
@@ -88,59 +89,54 @@ struct RemindWidgetView: View {
 
     /// Rows that fit below the header, counting section titles as rows.
     private var lineBudget: Int {
-        switch family {
-        case .systemSmall: 4
-        case .systemMedium: 4
-        default: 11
-        }
+        family == .systemLarge ? 11 : 4
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: family == .systemLarge ? 6 : 4) {
-            header
-            let (lines, hidden) = layout()
-            if lines.isEmpty {
-                Spacer()
-                Label("All clear", systemImage: "checkmark.seal.fill")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.green)
-                    .frame(maxWidth: .infinity)
-                Spacer()
-            } else {
-                ForEach(lines) { line in
-                    switch line.kind {
-                    case .header(let section): sectionTitle(section)
-                    case .reminder(let reminder): row(reminder)
+        HStack(alignment: .top, spacing: 8) {
+            VStack(alignment: .leading, spacing: family == .systemLarge ? 6 : 4) {
+                header
+                let (lines, hidden) = layout()
+                if lines.isEmpty {
+                    Spacer()
+                    Label("All clear", systemImage: "checkmark.seal.fill")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.green)
+                    Spacer()
+                } else {
+                    ForEach(lines) { line in
+                        switch line.kind {
+                        case .header(let section): sectionTitle(section)
+                        case .reminder(let reminder): row(reminder)
+                        }
+                    }
+                    Spacer(minLength: 0)
+                    if hidden > 0 {
+                        Text("+\(hidden) more")
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(.secondary)
                     }
                 }
-                Spacer(minLength: 0)
-                if hidden > 0 {
-                    Text("+\(hidden) more")
-                        .font(.caption2.weight(.medium))
-                        .foregroundStyle(.secondary)
-                }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+
+            // Right edge: switch on top, today's tally in the middle, + at the bottom.
+            VStack(alignment: .trailing, spacing: 0) {
+                GroupingSwitch(current: entry.grouping, compact: family == .systemSmall)
+                Spacer(minLength: 4)
+                DoneTally(done: entry.doneToday, progress: entry.progress)
+                Spacer(minLength: 4)
+                AddButton(family: family)
+            }
+            .frame(maxHeight: .infinity)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private var header: some View {
-        HStack(spacing: 8) {
-            ProgressRing(progress: entry.progress, lineWidth: 3.5)
-                .frame(width: 24, height: 24)
-            VStack(alignment: .leading, spacing: 0) {
-                Text(entry.leftToday == 0 ? "Clear" : "\(entry.leftToday) left")
-                    .font(.subheadline.weight(.bold))
-                if family != .systemSmall {
-                    Text("today")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            Spacer(minLength: 4)
-            GroupingSwitch(current: entry.grouping, compact: family == .systemSmall)
-        }
-        .padding(.bottom, 2)
+        Text(entry.leftToday == 0 ? "Nothing left today" : family == .systemSmall ? "\(entry.leftToday) left" : "\(entry.leftToday) left today")
+            .font(.subheadline.weight(.bold))
+            .lineLimit(1)
+            .padding(.bottom, 2)
     }
 
     private func sectionTitle(_ section: ReminderSection) -> some View {
@@ -202,6 +198,33 @@ struct RemindWidgetView: View {
     }
 }
 
+/// Bottom-right +: opens the app with quick add focused. Widgets can't take typed text.
+struct AddButton: View {
+    var family: WidgetFamily
+
+    var body: some View {
+        // The small size ignores Links, so it uses the system "open URL" action instead.
+        if family == .systemSmall {
+            Button(intent: OpenURLIntent(WidgetLink.add.url)) { plus }
+                .buttonStyle(.plain)
+        } else {
+            Link(destination: WidgetLink.add.url) { plus }
+        }
+    }
+
+    /// Black circle, white plus. An image (not a filled shape) so it can keep its real colors in
+    /// the clear and tinted Home Screen styles, which would otherwise wash it into the background.
+    private var plus: some View {
+        Image(systemName: "plus.circle.fill")
+            .resizable()
+            .widgetAccentedRenderingMode(.fullColor)
+            .symbolRenderingMode(.palette)
+            .foregroundStyle(.white, .black)
+            .frame(width: 26, height: 26)
+            .accessibilityLabel("Add reminder")
+    }
+}
+
 /// The in-widget switch between grouping by group and by urgency. Runs in place.
 struct GroupingSwitch: View {
     var current: Grouping
@@ -228,21 +251,32 @@ struct GroupingSwitch: View {
     }
 }
 
-struct ProgressRing: View {
+/// How many reminders you finished today, with a thin bar for the share of today's list.
+struct DoneTally: View {
+    var done: Int
     var progress: Double
-    var lineWidth: CGFloat
 
     var body: some View {
-        ZStack {
-            Circle().stroke(.green.opacity(0.2), lineWidth: lineWidth)
-            Circle()
-                .trim(from: 0, to: progress)
-                .stroke(
-                    AngularGradient(colors: [.mint, .green], center: .center),
-                    style: StrokeStyle(lineWidth: lineWidth, lineCap: .round)
-                )
-                .rotationEffect(.degrees(-90))
+        VStack(spacing: 2) {
+            Text(done, format: .number)
+                .font(.system(size: 24, weight: .bold, design: .rounded))
+                .contentTransition(.numericText())
+                .widgetAccentable()
+            Text("done")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.secondary)
+            ZStack(alignment: .leading) {
+                Capsule().fill(.secondary.opacity(0.25))
+                Capsule()
+                    .fill(.green)
+                    .frame(width: 30 * progress)
+                    .widgetAccentable()
+            }
+            .frame(width: 30, height: 4)
         }
+        .frame(minWidth: 30)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(done) done today")
     }
 }
 

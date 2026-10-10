@@ -88,6 +88,11 @@ struct HomeView: View {
     @State private var path: [Route] = []
     @State private var editingGroup: ReminderGroup?
     @State private var groupToDelete: ReminderGroup?
+    /// Bumped to focus the quick-add bar (from the widget's + button).
+    @State private var quickAddFocus = 0
+    /// Set while a widget-started add is in progress, so the app can head back home afterwards.
+    @State private var addFromWidget = false
+    @Environment(\.scenePhase) private var scenePhase
 
     private var db: ReminderDatabase { store.database }
 
@@ -166,7 +171,12 @@ struct HomeView: View {
                 }
             }
             .safeAreaInset(edge: .bottom) {
-                QuickAddBar(defaultGroup: nil, defaultsToToday: false)
+                QuickAddBar(defaultGroup: nil, defaultsToToday: false, focusRequest: quickAddFocus) {
+                    if addFromWidget {
+                        addFromWidget = false
+                        HomeScreen.go()
+                    }
+                }
             }
             .navigationDestination(for: Route.self) { route in
                 switch route {
@@ -189,15 +199,23 @@ struct HomeView: View {
                 Text("This also removes its finished items from Done.")
             }
             .onOpenURL(perform: handle)
+            .onChange(of: scenePhase) { _, phase in
+                if phase != .active { addFromWidget = false }
+            }
         }
     }
 
-    /// Widget taps arrive here, because widget buttons can't run code in place under xtool.
-    /// The app does the action and goes straight back to the Home Screen; the widget shows the
-    /// result. A reminder finished by mistake can be restored from Done.
+    /// `remind://` links from the widget. The + button opens quick add; after you add, the app
+    /// heads back to the Home Screen. The complete and switch links are a fallback for builds
+    /// without the App Intents metadata: the app does the action and goes straight back home.
     private func handle(_ url: URL) {
         store.reload()
         switch WidgetLink(url: url) {
+        case .add:
+            path = []
+            addFromWidget = true
+            quickAddFocus += 1
+            return
         case .complete(let id):
             store.setCompleted(id, true)
         case .toggleGrouping:

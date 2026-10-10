@@ -219,6 +219,9 @@ struct QuickAddBar: View {
     var defaultGroup: UUID?
     /// In Today, a reminder typed without a date is due today.
     var defaultsToToday: Bool
+    /// Changing this focuses the field and brings up the keyboard.
+    var focusRequest = 0
+    var onAdded: (() -> Void)?
 
     @Environment(ReminderStore.self) private var store
     @State private var text = ""
@@ -253,6 +256,12 @@ struct QuickAddBar: View {
         .padding(.bottom, 8)
         .animation(.spring(duration: 0.3), value: focused && !text.isEmpty)
         .sensoryFeedback(.impact(weight: .light), trigger: store.database.reminders.count)
+        .task(id: focusRequest) {
+            guard focusRequest > 0 else { return }
+            // Let the app finish coming forward, or the keyboard request is dropped.
+            try? await Task.sleep(for: .milliseconds(250))
+            focused = true
+        }
     }
 
     private func groupName(for parsed: QuickAddParser.Result) -> String? {
@@ -269,6 +278,7 @@ struct QuickAddBar: View {
         withAnimation(.spring) { store.add(parsed, defaultGroup: defaultGroup) }
         text = ""
         focused = true
+        onAdded?()
     }
 }
 
