@@ -212,17 +212,22 @@ public struct ReminderDatabase: Codable, Sendable {
     public var reminders: [Reminder]
     /// What the Home Screen widget buckets by. Flipped from the widget itself or from the app.
     public var widgetGrouping: Grouping
+    /// How far each widget size is paged down, as the number of reminders skipped. Keyed by size
+    /// ("small", "medium", "large") so differently sized widgets page independently.
+    public var widgetScroll: [String: Int]
 
     public init(
         version: Int = Self.currentVersion,
         groups: [ReminderGroup],
         reminders: [Reminder],
-        widgetGrouping: Grouping = .urgency
+        widgetGrouping: Grouping = .urgency,
+        widgetScroll: [String: Int] = [:]
     ) {
         self.version = version
         self.groups = groups
         self.reminders = reminders
         self.widgetGrouping = widgetGrouping
+        self.widgetScroll = widgetScroll
     }
 
     public init(from decoder: Decoder) throws {
@@ -231,6 +236,7 @@ public struct ReminderDatabase: Codable, Sendable {
         groups = try c.decode([ReminderGroup].self, forKey: .groups)
         reminders = try c.decode([Reminder].self, forKey: .reminders)
         widgetGrouping = try c.decodeIfPresent(Grouping.self, forKey: .widgetGrouping) ?? .urgency
+        widgetScroll = try c.decodeIfPresent([String: Int].self, forKey: .widgetScroll) ?? [:]
     }
 
     public func group(id: UUID) -> ReminderGroup? {

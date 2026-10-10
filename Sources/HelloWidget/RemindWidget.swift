@@ -17,6 +17,7 @@ struct RemindEntry: TimelineEntry {
     var sections: [ReminderSection]
     var groups: [UUID: ReminderGroup]
     var leftToday: Int
+    var scroll: [String: Int]
     var doneToday: Int
 
     /// Share of today's work finished; a day with nothing due counts as complete.
@@ -37,6 +38,7 @@ struct RemindEntry: TimelineEntry {
         grouping = db.widgetGrouping
         sections = db.sections(of: db.activeReminders, by: db.widgetGrouping, now: now)
         groups = Dictionary(uniqueKeysWithValues: db.groups.map { ($0.id, $0) })
+        scroll = db.widgetScroll
         leftToday = db.activeReminders.filter { $0.isDueTodayOrOverdue(now: now) }.count
         doneToday = db.doneReminders.filter { $0.completedAt.map(Calendar.current.isDateInToday) ?? false }.count
     }
@@ -96,26 +98,22 @@ struct RemindWidgetView: View {
         HStack(alignment: .top, spacing: 8) {
             // Left side: reminders only.
             VStack(alignment: .leading, spacing: family == .systemLarge ? 6 : 4) {
-                let (lines, hidden) = layout()
-                if lines.isEmpty {
+                let page = layout()
+                if page.lines.isEmpty {
                     Spacer()
                     Label("All clear", systemImage: "checkmark.seal.fill")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.green)
                     Spacer()
                 } else {
-                    ForEach(lines) { line in
+                    ForEach(page.lines) { line in
                         switch line.kind {
                         case .header(let section): sectionTitle(section)
                         case .reminder(let reminder): row(reminder)
                         }
                     }
                     Spacer(minLength: 0)
-                    if hidden > 0 {
-                        Text("+\(hidden) more")
-                            .font(.caption2.weight(.medium))
-                            .foregroundStyle(.secondary)
-                    }
+                    pager(page)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -168,21 +166,70 @@ struct RemindWidgetView: View {
         var kind: Kind
     }
 
-    /// Flattens sections into rows until the budget runs out. A section title is only shown
-    /// when at least one of its reminders fits under it.
-    private func layout() -> ([Line], hidden: Int) {
+    private struct Page {
+        var lines: [Line]
+        /// Reminders skipped above this page, shown on it, and in total.
+        var start: Int, shown: Int, total: Int
+    }
+
+    /// Key for this size's scroll position in `ReminderDatabase.widgetScroll`.
+    private var sizeKey: String {
+        switch family {
+        case .systemSmall: "small"
+        case .systemMedium: "medium"
+        default: "large"
+        }
+    }
+
+    /// Skips the reminders paged past, then fills rows until the budget runs out. A section title
+    /// is shown above the first visible reminder of each section, so a page that starts mid
+    /// section still says where it is.
+    private func layout() -> Page {
+        let flat = entry.sections.flatMap { section in section.reminders.map { (section, $0) } }
+        var start = entry.scroll[sizeKey] ?? 0
+        if start >= flat.count { start = 0 } // things were finished since; back to the top
         var lines: [Line] = []
         var shown = 0
-        for section in entry.sections {
-            guard lines.count + 2 <= lineBudget else { break }
-            lines.append(Line(id: "h" + section.id, kind: .header(section)))
-            for reminder in section.reminders {
-                guard lines.count < lineBudget else { break }
-                lines.append(Line(id: reminder.id.uuidString, kind: .reminder(reminder)))
-                shown += 1
+        var currentSection: String?
+        for (section, reminder) in flat.dropFirst(start) {
+            let needsTitle = section.id != currentSection
+            guard lines.count + (needsTitle ? 2 : 1) <= lineBudget else { break }
+            if needsTitle {
+                lines.append(Line(id: "h" + section.id, kind: .header(section)))
+                currentSection = section.id
             }
+            lines.append(Line(id: reminder.id.uuidString, kind: .reminder(reminder)))
+            shown += 1
         }
-        return (lines, entry.allActive.count - shown)
+        return Page(lines: lines, start: start, shown: shown, total: flat.count)
+    }
+
+    /// "N more" pages down; on the last page, "Back to top" returns to the start.
+    @ViewBuilder private func pager(_ page: Page) -> some View {
+        let remaining = page.total - page.start - page.shown
+        if remaining > 0 {
+            Button(intent: ScrollWidgetIntent(size: sizeKey, offset: page.start + page.shown)) {
+                pagerLabel("\(remaining) more", symbol: "chevron.down")
+            }
+            .buttonStyle(.plain)
+        } else if page.start > 0 {
+            Button(intent: ScrollWidgetIntent(size: sizeKey, offset: 0)) {
+                pagerLabel("Back to top", symbol: "chevron.up")
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private func pagerLabel(_ text: String, symbol: String) -> some View {
+        HStack(spacing: 3) {
+            Image(systemName: symbol)
+            Text(text)
+        }
+        .font(.caption2.weight(.semibold))
+        .foregroundStyle(.secondary)
+        .padding(.vertical, 3)
+        .padding(.trailing, 8)
+        .contentShape(.rect)
     }
 }
 

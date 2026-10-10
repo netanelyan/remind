@@ -44,7 +44,36 @@ struct SwitchWidgetGroupingIntent: AppIntent {
     init() {}
 
     func perform() async throws -> some IntentResult {
-        ReminderRepository.mutate { $0.widgetGrouping = $0.widgetGrouping.toggled }
+        ReminderRepository.mutate { db in
+            db.widgetGrouping = db.widgetGrouping.toggled
+            db.widgetScroll = [:] // the order changed, so start every widget from the top
+        }
+        WidgetCenter.shared.reloadAllTimelines()
+        return .result()
+    }
+}
+
+/// Pages a widget's reminder list. Widgets can't scroll, so "N more" and "Back to top" set
+/// where the list starts.
+struct ScrollWidgetIntent: AppIntent {
+    static let title: LocalizedStringResource = "Scroll Widget"
+    static let isDiscoverable = false
+
+    @Parameter(title: "Widget Size")
+    var size: String
+
+    @Parameter(title: "First Reminder")
+    var offset: Int
+
+    init() {}
+
+    init(size: String, offset: Int) {
+        self.size = size
+        self.offset = offset
+    }
+
+    func perform() async throws -> some IntentResult {
+        ReminderRepository.mutate { $0.widgetScroll[size] = offset }
         WidgetCenter.shared.reloadAllTimelines()
         return .result()
     }

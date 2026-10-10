@@ -162,7 +162,10 @@ final class ReminderStore {
     // MARK: Settings
 
     func setWidgetGrouping(_ grouping: Grouping) {
-        change { $0.widgetGrouping = grouping }
+        change { db in
+            db.widgetGrouping = grouping
+            db.widgetScroll = [:] // the order changed, so start every widget from the top
+        }
     }
 }
 
