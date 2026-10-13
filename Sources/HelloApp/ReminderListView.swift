@@ -229,7 +229,7 @@ struct QuickAddBar: View {
         let parsed = QuickAddParser().parse(text)
         VStack(alignment: .leading, spacing: 6) {
             if focused, !text.isEmpty {
-                ParsePreview(parsed: parsed, groupName: store.groupName(matching: parsed))
+                ParsePreview(parsed: parsed, groupName: store.group(matching: parsed)?.name)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
             HStack(spacing: 10) {
@@ -270,18 +270,24 @@ struct QuickAddBar: View {
 }
 
 /// The pop-up the widget's + button opens: a small sheet that rides above the keyboard, so the
-/// field is never hidden behind it.
+/// field is never hidden behind it. Group and date can be picked here or typed (`#work`,
+/// `tomorrow`); typed values win.
 struct QuickAddSheet: View {
     var onAdded: () -> Void
 
     @Environment(ReminderStore.self) private var store
     @Environment(\.dismiss) private var dismiss
     @State private var text = ""
+    @State private var groupID: UUID?
+    @State private var hasDate = false
+    @State private var hasTime = false
+    @State private var date = Calendar.current.startOfDay(for: .now)
     @FocusState private var focused: Bool
 
     var body: some View {
         let parsed = QuickAddParser().parse(text)
         let canAdd = !parsed.title.trimmingCharacters(in: .whitespaces).isEmpty
+        let typedGroup = store.group(matching: parsed)
         NavigationStack {
             VStack(alignment: .leading, spacing: 12) {
                 TextField("gym tomorrow 7am !high #work", text: $text, axis: .vertical)
@@ -293,12 +299,54 @@ struct QuickAddSheet: View {
                     .padding(.horizontal, 14)
                     .padding(.vertical, 12)
                     .background(.background.secondary, in: .rect(cornerRadius: 14, style: .continuous))
-                ParsePreview(parsed: parsed, groupName: store.groupName(matching: parsed))
-                    .frame(minHeight: 24, alignment: .leading)
-                    .animation(.spring(duration: 0.3), value: text.isEmpty)
+
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(store.database.sortedGroups) { group in
+                            let selected = (typedGroup?.id ?? groupID) == group.id
+                            Button {
+                                withAnimation(.spring(duration: 0.25)) { groupID = group.id }
+                            } label: {
+                                Label(group.name, systemImage: group.symbol)
+                                    .font(.subheadline.weight(.medium))
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 7)
+                                    .foregroundStyle(selected ? .white : group.color.color)
+                                    .background(selected ? AnyShapeStyle(group.color.gradient) : AnyShapeStyle(group.color.color.opacity(0.15)), in: .capsule)
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(typedGroup != nil)
+                        }
+                    }
+                }
+                .scrollClipDisabled()
+
+                if parsed.dueDate == nil {
+                    HStack(spacing: 8) {
+                        toggleChip(hasDate ? "Date" : "Add Date", "calendar", isOn: $hasDate)
+                        if hasDate {
+                            DatePicker("Date", selection: $date, displayedComponents: .date)
+                                .labelsHidden()
+                            toggleChip(hasTime ? "Time" : "Add Time", "clock", isOn: $hasTime)
+                            if hasTime {
+                                DatePicker("Time", selection: $date, displayedComponents: .hourAndMinute)
+                                    .labelsHidden()
+                            }
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .transition(.opacity)
+                } else {
+                    // A date typed in the text replaces the picker.
+                    ParsePreview(parsed: parsed, groupName: nil)
+                        .transition(.opacity)
+                }
             }
             .padding(.horizontal)
             .frame(maxHeight: .infinity, alignment: .top)
+            .animation(.spring(duration: 0.3), value: parsed.dueDate == nil)
+            .animation(.spring(duration: 0.3), value: hasDate)
+            .animation(.spring(duration: 0.3), value: hasTime)
             .navigationTitle("New Reminder")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -311,8 +359,21 @@ struct QuickAddSheet: View {
                 }
             }
         }
-        .presentationDetents([.height(190)])
+        .presentationDetents([.height(250)])
         .presentationDragIndicator(.hidden)
+        .onAppear {
+            if groupID == nil { groupID = store.database.sortedGroups.first?.id }
+        }
+        .onChange(of: hasTime) { _, on in
+            let calendar = Calendar.current
+            // Turning time on starts at the next hour; turning it off goes back to the whole day.
+            date = on
+                ? calendar.date(bySettingHour: calendar.component(.hour, from: .now) + 1, minute: 0, second: 0, of: date) ?? date
+                : calendar.startOfDay(for: date)
+        }
+        .onChange(of: hasDate) { _, on in
+            if !on { hasTime = false }
+        }
         .task {
             // Let the app finish coming forward, or the keyboard request is dropped.
             try? await Task.sleep(for: .milliseconds(250))
@@ -320,10 +381,28 @@ struct QuickAddSheet: View {
         }
     }
 
+    private func toggleChip(_ title: String, _ symbol: String, isOn: Binding<Bool>) -> some View {
+        Button {
+            isOn.wrappedValue.toggle()
+        } label: {
+            Label(title, systemImage: symbol)
+                .font(.subheadline.weight(.medium))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
+                .background(isOn.wrappedValue ? Color.accentColor.opacity(0.18) : Color.secondary.opacity(0.12), in: .capsule)
+                .foregroundStyle(isOn.wrappedValue ? Color.accentColor : Color.secondary)
+        }
+        .buttonStyle(.plain)
+    }
+
     private func submit() {
-        let parsed = QuickAddParser().parse(text)
+        var parsed = QuickAddParser().parse(text)
         guard !parsed.title.trimmingCharacters(in: .whitespaces).isEmpty else { return }
-        store.add(parsed, defaultGroup: nil)
+        if parsed.dueDate == nil, hasDate {
+            parsed.dueDate = hasTime ? date : Calendar.current.startOfDay(for: date)
+            parsed.hasTime = hasTime
+        }
+        store.add(parsed, defaultGroup: groupID)
         dismiss()
         onAdded()
     }
@@ -331,9 +410,9 @@ struct QuickAddSheet: View {
 
 extension ReminderStore {
     /// The group a quick-add `#hint` refers to, if any.
-    func groupName(matching parsed: QuickAddParser.Result) -> String? {
+    func group(matching parsed: QuickAddParser.Result) -> ReminderGroup? {
         guard let hint = parsed.listHint?.lowercased() else { return nil }
-        return database.sortedGroups.first { $0.name.lowercased().replacingOccurrences(of: " ", with: "").hasPrefix(hint) }?.name
+        return database.sortedGroups.first { $0.name.lowercased().replacingOccurrences(of: " ", with: "").hasPrefix(hint) }
     }
 }
 
