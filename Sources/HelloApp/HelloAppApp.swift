@@ -88,11 +88,8 @@ struct HomeView: View {
     @State private var path: [Route] = []
     @State private var editingGroup: ReminderGroup?
     @State private var groupToDelete: ReminderGroup?
-    /// Bumped to focus the quick-add bar (from the widget's + button).
-    @State private var quickAddFocus = 0
-    /// Set while a widget-started add is in progress, so the app can head back home afterwards.
-    @State private var addFromWidget = false
-    @Environment(\.scenePhase) private var scenePhase
+    /// Shows the quick-add pop-up (from the widget's + button).
+    @State private var addingFromWidget = false
 
     private var db: ReminderDatabase { store.database }
 
@@ -171,12 +168,7 @@ struct HomeView: View {
                 }
             }
             .safeAreaInset(edge: .bottom) {
-                QuickAddBar(defaultGroup: nil, defaultsToToday: false, focusRequest: quickAddFocus) {
-                    if addFromWidget {
-                        addFromWidget = false
-                        HomeScreen.go()
-                    }
-                }
+                QuickAddBar(defaultGroup: nil, defaultsToToday: false)
             }
             .navigationDestination(for: Route.self) { route in
                 switch route {
@@ -186,6 +178,15 @@ struct HomeView: View {
             }
             .sheet(item: $editingGroup) { group in
                 GroupEditor(group: group, isNew: db.group(id: group.id) == nil)
+            }
+            .sheet(isPresented: $addingFromWidget) {
+                // After adding, head back to the Home Screen the widget was tapped from.
+                QuickAddSheet {
+                    Task {
+                        try? await Task.sleep(for: .milliseconds(350))
+                        HomeScreen.go()
+                    }
+                }
             }
             .confirmationDialog(
                 "Delete \"\(groupToDelete?.name ?? "")\"?",
@@ -199,13 +200,10 @@ struct HomeView: View {
                 Text("This also removes its finished items from Done.")
             }
             .onOpenURL(perform: handle)
-            .onChange(of: scenePhase) { _, phase in
-                if phase != .active { addFromWidget = false }
-            }
         }
     }
 
-    /// `remind://` links from the widget. The + button opens quick add; after you add, the app
+    /// `remind://` links from the widget. The + button opens the quick-add pop-up; after you add, the app
     /// heads back to the Home Screen. The complete and switch links are a fallback for builds
     /// without the App Intents metadata: the app does the action and goes straight back home.
     private func handle(_ url: URL) {
@@ -213,8 +211,7 @@ struct HomeView: View {
         switch WidgetLink(url: url) {
         case .add:
             path = []
-            addFromWidget = true
-            quickAddFocus += 1
+            addingFromWidget = true
             return
         case .complete(let id):
             store.setCompleted(id, true)

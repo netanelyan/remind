@@ -219,8 +219,6 @@ struct QuickAddBar: View {
     var defaultGroup: UUID?
     /// In Today, a reminder typed without a date is due today.
     var defaultsToToday: Bool
-    /// Changing this focuses the field and brings up the keyboard.
-    var focusRequest = 0
     var onAdded: (() -> Void)?
 
     @Environment(ReminderStore.self) private var store
@@ -231,7 +229,7 @@ struct QuickAddBar: View {
         let parsed = QuickAddParser().parse(text)
         VStack(alignment: .leading, spacing: 6) {
             if focused, !text.isEmpty {
-                ParsePreview(parsed: parsed, groupName: groupName(for: parsed))
+                ParsePreview(parsed: parsed, groupName: store.groupName(matching: parsed))
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
             HStack(spacing: 10) {
@@ -256,17 +254,6 @@ struct QuickAddBar: View {
         .padding(.bottom, 8)
         .animation(.spring(duration: 0.3), value: focused && !text.isEmpty)
         .sensoryFeedback(.impact(weight: .light), trigger: store.database.reminders.count)
-        .task(id: focusRequest) {
-            guard focusRequest > 0 else { return }
-            // Let the app finish coming forward, or the keyboard request is dropped.
-            try? await Task.sleep(for: .milliseconds(250))
-            focused = true
-        }
-    }
-
-    private func groupName(for parsed: QuickAddParser.Result) -> String? {
-        guard let hint = parsed.listHint?.lowercased() else { return nil }
-        return store.database.sortedGroups.first { $0.name.lowercased().replacingOccurrences(of: " ", with: "").hasPrefix(hint) }?.name
     }
 
     private func submit() {
@@ -282,8 +269,76 @@ struct QuickAddBar: View {
     }
 }
 
+/// The pop-up the widget's + button opens: a small sheet that rides above the keyboard, so the
+/// field is never hidden behind it.
+struct QuickAddSheet: View {
+    var onAdded: () -> Void
+
+    @Environment(ReminderStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
+    @State private var text = ""
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        let parsed = QuickAddParser().parse(text)
+        let canAdd = !parsed.title.trimmingCharacters(in: .whitespaces).isEmpty
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 12) {
+                TextField("gym tomorrow 7am !high #work", text: $text, axis: .vertical)
+                    .font(.title3)
+                    .lineLimit(1...3)
+                    .focused($focused)
+                    .submitLabel(.done)
+                    .onSubmit(submit)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+                    .background(.background.secondary, in: .rect(cornerRadius: 14, style: .continuous))
+                ParsePreview(parsed: parsed, groupName: store.groupName(matching: parsed))
+                    .frame(minHeight: 24, alignment: .leading)
+                    .animation(.spring(duration: 0.3), value: text.isEmpty)
+            }
+            .padding(.horizontal)
+            .frame(maxHeight: .infinity, alignment: .top)
+            .navigationTitle("New Reminder")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel", systemImage: "xmark") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Add", systemImage: "checkmark", action: submit)
+                        .disabled(!canAdd)
+                }
+            }
+        }
+        .presentationDetents([.height(190)])
+        .presentationDragIndicator(.hidden)
+        .task {
+            // Let the app finish coming forward, or the keyboard request is dropped.
+            try? await Task.sleep(for: .milliseconds(250))
+            focused = true
+        }
+    }
+
+    private func submit() {
+        let parsed = QuickAddParser().parse(text)
+        guard !parsed.title.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        store.add(parsed, defaultGroup: nil)
+        dismiss()
+        onAdded()
+    }
+}
+
+extension ReminderStore {
+    /// The group a quick-add `#hint` refers to, if any.
+    func groupName(matching parsed: QuickAddParser.Result) -> String? {
+        guard let hint = parsed.listHint?.lowercased() else { return nil }
+        return database.sortedGroups.first { $0.name.lowercased().replacingOccurrences(of: " ", with: "").hasPrefix(hint) }?.name
+    }
+}
+
 /// Chips that show what quick add understood, before you press return.
-private struct ParsePreview: View {
+struct ParsePreview: View {
     var parsed: QuickAddParser.Result
     var groupName: String?
 

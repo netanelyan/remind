@@ -7,7 +7,7 @@ import Foundation
 /// (see WidgetIntents.swift), which only works when the bundle has Xcode-generated metadata.
 public enum WidgetLink: Equatable, Sendable {
     case open
-    /// Opens the app with the quick-add bar focused.
+    /// Opens the app's quick-add pop-up.
     case add
     case complete(UUID)
     case toggleGrouping

@@ -16,7 +16,7 @@
 - **Quick add** that understands plain language: `gym tomorrow 7am !high #work` becomes a high-priority reminder in Work, due tomorrow at 7 AM. It also handles `in 20 min`, `next monday at 3:30pm`, `oct 15`, `*` for flagged, and more, with live chips showing what it understood.
 - **Smart views:** Today, Scheduled, Flagged and All.
 - **A hidden Done folder.** Finished reminders leave every list and wait in Done (under the ••• menu), where you can restore or clear them.
-- **Home Screen widget** in small, medium and large sizes. Tap a circle to finish a reminder in place, flip between group and urgency layouts, see how many things you got done today, and tap + to jump straight into quick add.
+- **Home Screen widget** in small, medium and large sizes. Tap a circle to finish a reminder in place, flip between group and urgency layouts, see how many things you got done today, and tap + for a quick-add pop-up that sits above the keyboard.
 - **Lock Screen widgets:** a progress gauge, the three most urgent reminders, and an inline count.
 - **Notifications** when reminders are due.
 - Swipe actions, a springy completion animation with haptics, Liquid Glass controls and full dark mode support.
